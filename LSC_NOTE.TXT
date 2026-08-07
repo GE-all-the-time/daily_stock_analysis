@@ -1,0 +1,529 @@
+我核查了各服务截至 2026 年 8 月的官方定价和接口说明。你的长期零成本方案可行，但需要修正 SerpAPI 配置，并把搜索、LLM、行情三类 API 分开安排，避免某一类服务失效后整份报告缺失。
+
+一、先纠正 SerpAPI 配置
+你很可能把 SerpAPI 的“接口地址”误当成了 API Key
+
+下面两个地址都是 API endpoint 或产品文档地址，不是密钥：
+
+https://serpapi.com/search?engine=google
+
+https://serpapi.com/search?engine=baidu
+
+
+SerpAPI 官方示例要求请求同时包含：
+
+engine
+q
+api_key
+
+例如：
+
+https://serpapi.com/search.json?engine=google&q=Apple&api_key=你的真实APIKey
+
+
+Baidu 接口也是同样逻辑：
+
+https://serpapi.com/search.json?engine=baidu&q=港股&api_key=你的真实APIKey
+
+
+SerpAPI 官方 Baidu 文档明确写明，endpoint 是 https://serpapi.com/search?engine=baidu，但调用时必须进一步传入搜索关键词 q 和真正的 api_key。
+
+GitHub Secret 中应该填什么
+
+Secret 名称保持：
+
+SERPAPI_API_KEYS
+
+
+Secret 的值必须是登录 SerpAPI 后，在 Dashboard 中看到的私人 API Key，通常是一串字符。不要填写 endpoint URL，也不要填写整条请求 URL。
+
+正确：
+
+SERPAPI_API_KEYS=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+错误：
+
+SERPAPI_API_KEYS=https://serpapi.com/search?engine=google
+
+
+也不要写成：
+
+SERPAPI_API_KEYS=https://serpapi.com/search.json?engine=google&api_key=xxxx
+
+
+因为项目代码会自行构造 endpoint、搜索关键词、时间范围等参数。
+
+为什么日志没有直接显示 401，而是返回 0 条
+
+你的日志中 SerpAPI 调用被记录为“搜索成功，返回 0 条结果”，没有明确出现 401 或 403。因此目前存在两种可能：
+
+你实际上填写了正确的 API Key，只是在消息中把 endpoint 当作申请来源来说明；
+你填写的是 endpoint，项目的异常兼容或结果解析逻辑把无效响应转化成了空结果。
+
+最可靠的判断方式是进入 SerpAPI Dashboard 检查：
+
+本月 Searches Used 是否大于 0；
+最近调用是否显示 google 或 baidu；
+API Key 是否与 GitHub Secret 中的值一致。
+
+如果 Searches Used 始终为 0，基本可以确认 GitHub Actions 并未使用正确的 API Key。
+
+二、这些服务是否有每月可持续免费额度
+1. Brave Search API：有每月免费信用额，长期优先保留
+
+Brave 官方目前的 Search API 定价为：
+
+每 1,000 次请求 5 美元；
+每月自动提供 5 美元信用额；
+理论上大约覆盖 1,000 次普通 Search 请求/月。
+
+但需要注意，这已经不是传统的“达到限额后停止”的免费套餐，而是带每月信用额的计量计费模式。有些账户可能要求绑定支付方式，超过免费信用额后可能产生费用，所以必须在 Brave Dashboard 设置预算控制、调用预警或手动监控。
+
+对你这个项目是否够用
+
+你有 9 只股票，系统每只股票可能进行约 4 至 5 个维度的搜索，再加市场复盘。粗略估算：
+
+9只 × 5次搜索 × 每日约22个交易日
+≈ 990次/月
+
+
+这还没有计算：
+
+失败重试；
+中英文二次查询；
+港股和美股市场复盘；
+手动运行；
+SearXNG 失败后的回退调用。
+
+因此每月 5 美元信用额属于大致够用但比较接近上限。如果每天都会分析 9 只股票，建议增加缓存，或者让 Brave 只承担优先搜索，另外用 Tavily 和 SerpAPI 分担。
+
+2. SerpAPI：有永久免费套餐，每月 250 次搜索
+
+SerpAPI 官方定价页面当前列出：
+
+Free：0 美元/月；
+250 searches/month；
+每小时最大 throughput 为 50；
+用完后需等下个月恢复或升级套餐。
+
+这是每月重置的持续免费额度，不是一次性试用。
+
+不过，250 次/月不足以独立覆盖你每天分析 9 只股票的全部搜索需求，更适合作为：
+
+Brave 没找到风险事件时的备选；
+特定公告、诉讼和监管查询；
+Google 或 Baidu 结果补充；
+每只股票每日最多一类搜索。
+关于 Google 与 Baidu endpoint
+
+你不需要在 GitHub Secret 中选择：
+
+engine=google
+
+
+或：
+
+engine=baidu
+
+
+项目代码根据搜索场景选择或构造请求。你只需要填写 API Key。
+
+本项目 README 倾向将 SerpAPI 描述为适合中文金融新闻的搜索补强，但实际代码是否固定使用 Google、Baidu 或根据参数选择，要以当前版本的 src/search_service.py 为准。
+
+3. Gemini API：有持续免费层，但不能按“每月固定额度”理解
+
+Google 官方目前仍有 Gemini Developer API 免费层：
+
+某些模型输入和输出免费；
+模型可用性有限；
+免费层速率和每日请求数受限制；
+限额按 Google Cloud / AI Studio 项目计算，而不是按单个 API Key 计算。
+
+也就是说，创建多个 Gemini Key 并不会自动增加免费额度，因为同一项目中的 Key 共享项目限额。
+
+你本次遇到的并不是典型的免费配额超限，而是：
+
+gemini-3-flash-preview 返回 503 高负载；
+gemini-2.5-flash 返回 404，不对当前账户开放。
+
+503 说明 preview 模型容量不稳定，404 说明 fallback 模型配置已失效。免费层本身仍存在，但实际可用模型应以 Google AI Studio 中该项目的模型列表和 Rate Limits 页面为准。Google 也明确指出，Preview 和 Experimental 模型通常具有更严格的限制。
+
+建议
+
+继续保留 Gemini，但不要使用 Preview 模型作为唯一主力。优先选择 AI Studio 中当前显示可用、带 Free Tier 的稳定 Flash 或 Flash-Lite 模型，并确保 fallback 也是当前项目能够实际调用的模型。
+
+4. Tavily：每月 1,000 免费 credits，强烈推荐新增
+
+Tavily 官方当前提供：
+
+Researcher 免费套餐；
+每月 1,000 API credits；
+不要求信用卡；
+Basic Search 每次消耗 1 credit；
+Advanced Search 每次消耗 2 credits。
+
+如果本项目使用的是普通搜索模式，1,000 credits 通常约等于 1,000 次基础搜索。如果使用 advanced 模式，则约等于 500 次。
+
+它非常适合作为 Anspire 用完后的替代，因为：
+
+有持续每月免费额度；
+返回结构更适合 LLM；
+英文新闻和美股内容通常比 Baidu 类结果更匹配；
+你的项目已经安装 tavily-python，并原生支持 TAVILY_API_KEYS。
+
+推荐新增：
+
+TAVILY_API_KEYS=你的Tavily_API_Key
+
+5. Bocha 博查：免费额度更接近试用，不建议视为稳定月度免费额度
+
+目前公开资料显示博查曾提供 1,000 次免费试用资源包，但部分资料注明有效期约三个月，并不是明确的“每月自动恢复 1,000 次”。相关资源包用完后通常转为按次付费。
+
+博查官方页面强调免费接入，但当前页面没有像 Tavily、SerpAPI 那样清楚列出“每月自动重置”的固定数量。因此我建议：
+
+把博查视为中文搜索试用或低价补充，不要将其计入长期零成本核心额度。
+
+如果你分析的重点是港股中文公告、内地银行股和中文研报，博查可能比 Tavily 更适合中文结果，但长期免费确定性不如 Tavily、SerpAPI 和 Brave。
+
+6. TickFlow：免费历史日 K 可长期使用，实时行情免费范围需看账户套餐
+
+TickFlow 官方明确提供一个无需注册、无需 API Key 的免费服务：
+
+https://free-api.tickflow.org
+
+
+免费服务包括：
+
+历史日 K；
+周线、月线、季线、年线；
+标的信息；
+交易所和标的池查询。
+
+但免费无 Key 服务不包括：
+
+实时行情；
+分钟 K 线；
+盘中更新。
+
+TickFlow 首页同时列出了“Free 永久免费”注册套餐，并称可用于实时行情和日 K 入门体验，但具体市场、调用次数和港美股权限可能由账户控制台决定，不能仅凭主页确认你账户的完整覆盖范围。
+
+对本项目的实际价值
+
+项目当前只在检测到下面这个 Secret 时启用 TickFlow：
+
+TICKFLOW_API_KEY
+
+
+所以无需 Key 的 free-api.tickflow.org 是否会被当前项目自动使用，需要检查项目实现。仅创建免费的 TickFlow API Key 并填入 Secret，应该是最简单的测试方式：
+
+TICKFLOW_API_KEY=你的TickFlow_API_Key
+
+
+如果免费账户已包含你需要的港股、美股日 K 或基础实时行情，价值很高；如果只覆盖历史日 K，也仍能减少 AkShare 断连的影响。
+
+7. Longbridge：核心 API 和基础行情可免费，但需要长桥账户和授权
+
+Longbridge 当前官方定价说明：
+
+交易、账户、基本面、新闻等核心 API 免费；
+美股 LV1、港股 LV1、A 股 LV1 基础行情随符合条件的账户提供；
+REST 拉取和 WebSocket 推送没有硬性使用总量上限；
+港股 LV2、期权 OPRA 等高级行情需要付费。
+
+它与普通“注册一个 API 网站即可获取 Key”不同，一般需要：
+
+开立符合要求的长桥账户；
+申请 OpenAPI 权限；
+完成 OAuth 或 Legacy Token 配置；
+确认 OpenAPI 的港股、美股行情权限。
+
+对于你这种港股加美股组合，Longbridge 对以下问题最有帮助：
+
+港股证券名称；
+港股基础实时行情；
+美股 LV1 行情；
+基本面和新闻；
+港美股统一的证券标识。
+
+如果你愿意开户和完成授权，Longbridge 是当前最值得添加的行情源之一。如果不愿意开设券商账户，则优先尝试 TickFlow。
+
+三、长期免费能力汇总
+明确有持续免费额度
+Brave Search API
+每月5美元信用额
+约1,000次普通Search请求
+
+
+建议保留，但必须防止超额计费。
+
+Tavily
+每月1,000 credits
+Basic Search约1 credit/次
+无需信用卡
+
+
+最值得新增。
+
+SerpAPI
+每月250次搜索
+每小时最多50次
+
+
+适合作为补充搜索源。
+
+Gemini API
+部分模型免费
+按项目、模型和速率限制
+不是统一的每月固定次数
+
+
+可以长期使用，但 Preview 模型不应作为唯一主模型。
+
+TickFlow
+免费历史日K长期可用
+实时行情和港美股范围需看注册账户套餐
+
+
+适合行情兜底。
+
+Longbridge
+核心API及基础LV1行情可免费
+需要账户和OpenAPI授权
+高级行情另收费
+
+
+适合港美股行情和基础信息。
+
+不应当作固定每月免费额度
+Anspire
+
+一次性余额，用完后不再作为长期核心服务。
+
+Bocha
+
+可能有免费试用资源包，但没有足够清晰的证据证明每月持续自动恢复，建议按试用或低价备用处理。
+
+四、结合你目前需求的新增 API 优先级
+第 1 优先级：Tavily
+
+新增：
+
+TAVILY_API_KEYS=你的Tavily_API_Key
+
+
+理由：
+
+每月 1,000 免费 credits；
+无需信用卡；
+项目原生支持；
+可以直接替代 Anspire 大部分新闻搜索职责；
+对美股、ETF、英文机构资讯较合适；
+与 Brave 合计可以提供约 2,000 次基础搜索级别的月度免费能力。
+
+这是最应立即新增的 API。
+
+第 2 优先级：修正 SerpAPI，而不是删除
+
+确保 GitHub Secret 中填的是 Dashboard API Key：
+
+SERPAPI_API_KEYS=真正的APIKey
+
+
+不要填：
+
+https://serpapi.com/search?engine=google
+
+
+理由：
+
+每月 250 次免费；
+可精准补充 Google 或 Baidu 结果；
+特别适合风险事件、监管处罚、诉讼和公告类查询；
+目前日志返回 0 条可能是配置错误，而不是服务本身无用。
+第 3 优先级：申请 TickFlow 免费 API Key
+
+新增：
+
+TICKFLOW_API_KEY=你的TickFlow_API_Key
+
+
+理由：
+
+当前报告缺失不仅是新闻问题，还有港股名称、实时价、量比、换手率和行情稳定性问题；
+免费历史日 K 可长期使用；
+在项目原生支持范围内；
+比继续增加第四个搜索 API 更能改善报告数据完整性。
+
+申请后先观察日志是否出现：
+
+TickFlow: ✅ 已配置
+
+
+以及是否实际出现：
+
+TickFlowFetcher
+
+
+只有后者才能证明项目真正调用了 TickFlow。
+
+第 4 优先级：Longbridge
+
+如果你已持有或愿意开设长桥账户，则 Longbridge 可以上升到第 2 或第 3 优先级。
+
+需要按项目支持的认证模式配置 Legacy 或 OAuth。Legacy 模式可能包括：
+
+LONGBRIDGE_APP_KEY
+LONGBRIDGE_APP_SECRET
+LONGBRIDGE_ACCESS_TOKEN
+
+
+理由：
+
+对港股和美股更有针对性；
+基础 LV1 行情和核心 API 可免费；
+有助于解决 HK03416、HK02638 名称和实时行情不稳定；
+不依赖 AkShare 网页接口。
+
+缺点是账户和授权流程比 TickFlow 复杂。
+
+第 5 优先级：修正 Gemini 模型配置
+
+这不需要申请新的 API，但必须处理。
+
+当前不应继续使用：
+
+GEMINI_MODEL_FALLBACK=gemini-2.5-flash
+
+
+因为你的日志已经明确证明这个模型对当前项目返回 404。
+
+建议进入 Google AI Studio，查看当前项目实际可用的稳定 Free Tier 模型，然后设置：
+
+GEMINI_MODEL=<当前可用的稳定Flash模型>
+GEMINI_MODEL_FALLBACK=<另一个当前可用的Flash-Lite或稳定模型>
+
+
+Google 官方说明免费层模型和额度会按模型变化，实际有效限额应在 AI Studio 查看。
+
+不建议把 Preview 模型同时作为主模型和唯一实际可用模型。
+
+第 6 优先级：Bocha
+
+新增格式：
+
+BOCHA_API_KEYS=你的Bocha_API_Key
+
+
+适合：
+
+港股中文新闻；
+内地银行股；
+中文公告和研报；
+Brave/Tavily 中文结果不足时补充。
+
+但不建议把它视为每月固定免费资源。
+
+五、我建议的最终零成本组合
+搜索层
+
+主搜索：
+
+BRAVE_API_KEYS
+TAVILY_API_KEYS
+
+
+补充搜索：
+
+SERPAPI_API_KEYS
+
+
+Anspire 余额用完后可以删除：
+
+ANSPIRE_API_KEYS
+
+
+或者暂时保留，直到账户余额真正归零。
+
+公共 SearXNG 建议禁用：
+
+SEARXNG_PUBLIC_INSTANCES_ENABLED=false
+
+
+因为本次公共实例大量出现 403、418、429 和 500，反而拖慢整体分析。
+
+LLM 层
+
+继续使用：
+
+GEMINI_API_KEY
+
+
+但修改主模型和 fallback，避免：
+
+gemini-3-flash-preview
+gemini-2.5-flash
+
+
+这一失败组合。
+
+如果暂时不准备付费申请其他 LLM，Gemini 可以继续作为唯一模型服务，但应增加：
+
+更稳定的模型；
+503 重试；
+指数退避；
+股票级失败重试；
+失败任务二次补跑。
+
+需要明确的是：搜索 API 不能代替 LLM API。Brave、Tavily、SerpAPI 即使全部正常，也不能在 Gemini 失败时生成最终 AI 决策报告。
+
+行情层
+
+优先尝试：
+
+TICKFLOW_API_KEY
+
+
+如果具备长桥账户条件，再增加：
+
+LONGBRIDGE_APP_KEY
+LONGBRIDGE_APP_SECRET
+LONGBRIDGE_ACCESS_TOKEN
+
+
+这样可以形成：
+
+TickFlow / Longbridge
+→ YFinance
+→ AkShare
+
+
+的多级港美股行情兜底。
+
+六、最终优先级清单
+新增 Tavily
+确认并修正 SerpAPI Secret，必须填 API Key
+申请并配置 TickFlow 免费 API Key
+修正 Gemini 主模型和 fallback
+如愿意完成券商账户授权，配置 Longbridge
+中文新闻仍不够时再添加 Bocha
+Anspire 一次性余额用尽后停用
+禁用不稳定的公共 SearXNG
+
+对你当前 9 只港美股组合，最实用且接近长期零成本的配置是：
+
+搜索：Brave + Tavily + SerpAPI
+LLM：Gemini稳定模型 + Gemini另一可用模型作为fallback
+行情：TickFlow + YFinance
+通知：企业微信
+
+
+如果 Longbridge 接入成功，则进一步变为：
+
+搜索：Brave + Tavily + SerpAPI
+LLM：Gemini稳定模型
+行情：Longbridge + TickFlow + YFinance
+通知：企业微信
+
+
+这个组合比继续依赖 Anspire 免费余额更可持续，也能同时改善你目前的三个问题：搜索结果不足、Gemini 间歇失败、港股行情及名称缺失。
