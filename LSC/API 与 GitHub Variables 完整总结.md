@@ -43,7 +43,7 @@ Gemini 3.5 Flash
 Groq GPT-OSS 120B
 ```
 
-Google 官方将 `gemini-3.5-flash` 标记为 Stable / GA，并支持 GenerateContent API；因此当前 `LLM_PRIMARY_API_SURFACE=generate_content` 可以保留。
+Google 官方将 `gemini-3.5-flash` 标记为 Stable / GA，并支持 GenerateContent API；因此当前 `LLM_PRIMARY_API_SURFACE=` 可以保留。
 
 ## 8.2 当前 Variables 核查
 
@@ -57,13 +57,13 @@ GEMINI_REQUEST_DELAY=3.0
 LLM_CHANNELS=primary,secondary
 
 LLM_PRIMARY_PROTOCOL=gemini
-LLM_PRIMARY_API_SURFACE=generate_content
+LLM_PRIMARY_API_SURFACE=chat_completions
 LLM_PRIMARY_ENABLED=true
 
 LLM_SECONDARY_PROTOCOL=openai
 LLM_SECONDARY_API_SURFACE=chat_completions
 LLM_SECONDARY_BASE_URL=https://api.groq.com/openai/v1
-LLM_SECONDARY_MODELS=openai/gpt-oss-120b
+LLM_SECONDARY_MODELS=openai/openai/gpt-oss-120b
 LLM_SECONDARY_ENABLED=true
 
 REPORT_TYPE=full
@@ -140,14 +140,14 @@ GEMINI_REQUEST_DELAY=3.0
 LLM_CHANNELS=primary,secondary
 
 LLM_PRIMARY_PROTOCOL=gemini
-LLM_PRIMARY_API_SURFACE=generate_content
+LLM_PRIMARY_API_SURFACE=chat_completions
 LLM_PRIMARY_MODELS=gemini-3.5-flash
 LLM_PRIMARY_ENABLED=true
 
 LLM_SECONDARY_PROTOCOL=openai
 LLM_SECONDARY_API_SURFACE=chat_completions
 LLM_SECONDARY_BASE_URL=https://api.groq.com/openai/v1
-LLM_SECONDARY_MODELS=openai/gpt-oss-120b
+LLM_SECONDARY_MODELS=openai/openai/gpt-oss-120b
 LLM_SECONDARY_ENABLED=true
 
 REPORT_TYPE=full
@@ -184,7 +184,7 @@ Channels 模式开启后，建议把以下配置理解为两套独立通道：
 
 ```text
 Protocol: gemini
-API Surface: generate_content
+API Surface: chat_completions
 Model: gemini-3.5-flash
 API Key: LLM_PRIMARY_API_KEY
 ```
